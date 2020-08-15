@@ -12,26 +12,69 @@ public class Serializer extends VarContract {
     }
 
     private static String getDataForSerialization(SerializableMarker object) {
-        Class reflectObj = object.getClass();
-
+        Class<?> reflectObj = object.getClass();
         StringBuilder sb = new StringBuilder();
         collectMetadata(sb, reflectObj);
-        collectFieldsData(sb, reflectObj, object);
+
+        if (isIncomingObjCollection(reflectObj)) {
+            addMetadataCollectionType(sb, object);
+            collectObjCollection(object, sb);
+        } else {
+            collectFieldsData(sb, reflectObj, object);
+        }
 
         return removeLastSeparator(sb.toString());
     }
 
-    private static void collectMetadata(StringBuilder sb, Class reflectObj) {
+    private static void collectMetadata(StringBuilder sb, Class<?> reflectObj) {
         sb.append(CLASS_TYPE)
                 .append(reflectObj.getTypeName())
                 .append(chooseSeparator());
     }
 
-    private static String chooseSeparator() {
-        return internalObject ? COLLECTION_SEPARATOR : ORDINARY_SEPARATOR;
+    private static boolean isIncomingObjCollection(Class<?> reflectObj) {
+        return isCollection(reflectObj.getTypeName());
     }
 
-    private static void collectFieldsData(StringBuilder sb, Class reflectObj, SerializableMarker object) {
+    private static boolean isCollection(String type) {
+        return VALID_INTERFACES.stream().anyMatch(type::contains);
+    }
+
+
+    private static void addMetadataCollectionType(StringBuilder sb, SerializableMarker object) {
+        Collection<?> collection = (Collection<?>) object;
+        if (collection.size() != EMPTY_COLLECTION_SIZE) {
+            Object firstElement = collection.toArray()[TYPE_PARAM_POSITION];
+
+            sb.append(COLLECTION_ELEMENT_CLASS_TYPE)
+                    .append(firstElement.getClass().getTypeName())
+                    .append(chooseSeparator());
+        }
+    }
+
+    private static String chooseSeparator() {
+        return internalObject ? COLLECTION_SEPARATOR : SEPARATOR;
+    }
+
+    private static void collectObjCollection(SerializableMarker object, StringBuilder sb) {
+        Collection<?> collection = (Collection<?>) object;
+        collection.forEach(it -> addElementToCollection(sb, it));
+        internalObject = false;
+    }
+
+    private static void addElementToCollection(StringBuilder sb, Object element) {
+        if (isObjMarked(element.getClass())) {
+            internalObject = true;
+            addElement(sb, getDataForSerialization((SerializableMarker) element));
+        }
+
+        if (isStandardType(element)) {
+            internalObject = true;
+            addElement(sb, element);
+        }
+    }
+
+    private static void collectFieldsData(StringBuilder sb, Class<?> reflectObj, SerializableMarker object) {
         Field[] fields = reflectObj.getDeclaredFields();
         for (Field field : fields) {
             sb.append(FIELD_TYPE_AND_VALUE);
@@ -54,42 +97,58 @@ public class Serializer extends VarContract {
     }
 
     private static boolean isCollection(Field field) {
-        String fieldType = field.getType().toString();
-        for (String type : VALID_INTERFACES) {
-            if (fieldType.contains(type)) return true;
-        }
-        return false;
+        String type = field.getType().toString();
+        return isCollection(type);
     }
 
     private static void collectCollection(Field field, StringBuilder sb, SerializableMarker object) {
-        setFullAccessFor(field);
+        Object collection = getFieldValue(field, object);
 
-        try {
-            Collection collection = (Collection) field.get(object);
-            for (Object element : collection) {
-                Class elemReflectObj = Class.forName(element.getClass().getName());
-                Class<?>[] interfaces = elemReflectObj.getInterfaces();
+        if (collection != null) {
+            boolean type = isStandardTypeCollection(field);
 
-                if (isHasMarker(interfaces)) collectCollectionElement(sb, element);
+            for (Object element : (Collection<?>) collection) {
+                if (type) {
+                    addElement(sb, element);
+                } else {
+                    addElementToCollection(sb, element);
+                }
             }
             replaceSeparatorAfterCollection(sb);
-        } catch (IllegalAccessException | ClassNotFoundException e) {
-            e.printStackTrace();
+        } else {
+            addValue(sb, null);
         }
     }
 
-    private static void setFullAccessFor(Field field) {
+    private static Object getFieldValue(Field field, SerializableMarker object) {
         field.setAccessible(true);
+        try {
+            return field.get(object);
+        } catch (IllegalAccessException e) {
+            e.printStackTrace();
+        }
+        return null;
     }
 
-    private static boolean isHasMarker(Class<?>[] interfaces) {
+    private static boolean isStandardTypeCollection(Field field) {
+        String collectionType = field.getGenericType().toString().toLowerCase();
+        return STANDARD_VAR_TYPES.stream().anyMatch(collectionType::contains);
+    }
+
+    private static boolean isStandardType(Object element) {
+        String elementType = element.getClass().toString().toLowerCase();
+        return STANDARD_VAR_TYPES.stream().anyMatch(elementType::contains);
+    }
+
+    private static boolean isObjMarked(Class<?> elemReflectObj) {
+        Class<?>[] interfaces = elemReflectObj.getInterfaces();
         return Arrays.asList(interfaces).contains(SerializableMarker.class);
     }
 
-    private static void collectCollectionElement(StringBuilder sb, Object element) {
+    private static void addElement(StringBuilder sb, Object element) {
         internalObject = true;
         sb.append(LEFT_SQUARE_BRACKET)
-                .append(getDataForSerialization((SerializableMarker) element))
+                .append(element)
                 .append(RIGHT_SQUARE_BRACKET)
                 .append(chooseSeparator());
     }
@@ -100,20 +159,33 @@ public class Serializer extends VarContract {
     }
 
     private static void addValue(Field field, StringBuilder sb, SerializableMarker object) {
-        sb.append(getFieldValue(field, object))
-                .append(chooseSeparator());
+        Object obj = getFieldValue(field, object);
+        if (obj == null) {
+            addValue(sb, NULL_VALUE);
+            return;
+        }
+
+        if (obj.equals(object)) {
+            addValue(sb, THIS_OBJECT);
+            return;
+        }
+
+        if (obj.equals(EMPTY_LINE)) {
+            addValue(sb, EMPTY_STRING);
+            return;
+        }
+
+        if (isObjMarked(obj.getClass())) {
+            internalObject = !internalObject;
+            addValue(sb, getDataForSerialization((SerializableMarker) obj));
+            return;
+        }
+
+        addValue(sb, String.valueOf(obj));
     }
 
-    private static String getFieldValue(Field field, SerializableMarker object) {
-        setFullAccessFor(field);
-
-        Object fieldValue = null;
-        try {
-            fieldValue = field.get(object);
-        } catch (IllegalAccessException e) {
-            e.printStackTrace();
-        }
-        return String.valueOf(fieldValue);
+    private static void addValue(StringBuilder sb, Object value) {
+        sb.append(value).append(chooseSeparator());
     }
 
     private static String removeLastSeparator(String str) {

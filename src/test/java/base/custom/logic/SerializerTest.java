@@ -13,17 +13,17 @@ import static org.testng.Assert.assertEquals;
 public class SerializerTest {
 
     @Test
-    public void serialize_simple_object_successfully() {
+    void serialize_simple_object_successfully() {
         assertEquals(serialize(SIMPLE_OBJECT), SERIALIZED_SIMPLE_OBJECT);
     }
 
     @Test
-    public void serialize_complex_object_successfully() {
+    void serialize_complex_object_successfully() {
         assertEquals(serialize(COMPLEX_OBJECT), SERIALIZED_COMPLEX_OBJECT);
     }
 
     @Test
-    public void serialize_synchronization_check_successfully() throws ExecutionException, InterruptedException {
+    void serialize_synchronization_check_successfully() throws ExecutionException, InterruptedException {
         ExecutorService executor = Executors.newFixedThreadPool(THREAD_COUNT);
         Callable callable = () -> serialize(COMPLEX_OBJECT);
 

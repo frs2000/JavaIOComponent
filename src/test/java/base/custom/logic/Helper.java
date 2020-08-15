@@ -41,5 +41,5 @@ class Helper {
         return b;
     }
 
-    static final int THREAD_COUNT = 1_000;
+    static final int THREAD_COUNT = 250;
 }

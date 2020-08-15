@@ -15,19 +15,19 @@ import static org.testng.Assert.assertEquals;
 public class DeserializerTest {
 
     @Test
-    public void deserialize_simple_object_successfully() {
+    void deserialize_simple_object_successfully() {
         SimpleObject actualObject = (SimpleObject) deserialize(SERIALIZED_SIMPLE_OBJECT);
         assertEquals(actualObject, SIMPLE_OBJECT);
     }
 
     @Test
-    public void deserialize_complex_object_successfully() {
+    void deserialize_complex_object_successfully() {
         ComplexObject actualObject = (ComplexObject) deserialize(SERIALIZED_COMPLEX_OBJECT);
         assertEquals(actualObject, COMPLEX_OBJECT);
     }
 
     @Test
-    public void deserialize_synchronization_check_successfully() throws ExecutionException, InterruptedException {
+    void deserialize_synchronization_check_successfully() throws ExecutionException, InterruptedException {
         ExecutorService executor = Executors.newFixedThreadPool(THREAD_COUNT);
         Callable callable = () -> deserialize(SERIALIZED_COMPLEX_OBJECT);
 
